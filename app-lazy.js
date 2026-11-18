@@ -10,55 +10,55 @@
     return document.querySelector("#smooth-letter-music");
   }
 
-  function scriptOnce(src) {
-    return new Promise(function (resolve, reject) {
-      var existing = document.querySelector('script[data-birthday-src="' + src + '"]');
-      if (existing) {
-        if (existing.dataset.loaded === "true") {
-          resolve();
-          return;
-        }
-        existing.addEventListener("load", resolve, { once: true });
-        existing.addEventListener("error", reject, { once: true });
-        return;
-      }
-
-      var script = document.createElement("script");
-      script.src = src;
-      script.async = true;
-      script.dataset.birthdaySrc = src;
-      script.addEventListener(
-        "load",
-        function () {
-          script.dataset.loaded = "true";
-          resolve();
-        },
-        { once: true }
-      );
-      script.addEventListener("error", reject, { once: true });
-      document.head.appendChild(script);
-    });
-  }
-
   function hydrateImages() {
     if (!photosPromise) {
-      photosPromise = scriptOnce("assets/photos.js").then(function () {
-        var photos = window.__BIRTHDAY_PHOTOS__ || {};
-        document.querySelectorAll("img[data-birthday-src]").forEach(function (image) {
-          var source = photos[image.getAttribute("data-birthday-src")];
-          if (!source) {
-            return;
-          }
-          image.addEventListener(
-            "load",
-            function () {
-              image.classList.add("is-loaded");
-            },
-            { once: true }
+      photosPromise = Promise.all(
+        ["01", "02", "03"].map(function (part) {
+          return fetch("assets/photos.part-" + part + ".js", {
+            cache: "force-cache"
+          }).then(function (response) {
+            if (!response.ok) {
+              throw new Error("Photo part " + part + " failed: " + response.status);
+            }
+            return response.text();
+          });
+        })
+      )
+        .then(function (parts) {
+          var script = document.createElement("script");
+          var url = URL.createObjectURL(
+            new Blob([parts.join("")], { type: "application/javascript" })
           );
-          image.src = source;
+          return new Promise(function (resolve, reject) {
+            script.src = url;
+            script.onload = function () {
+              URL.revokeObjectURL(url);
+              resolve();
+            };
+            script.onerror = function () {
+              URL.revokeObjectURL(url);
+              reject(new Error("Photo bundle could not be loaded"));
+            };
+            document.head.appendChild(script);
+          });
+        })
+        .then(function () {
+          var photos = window.__BIRTHDAY_PHOTOS__ || {};
+          document.querySelectorAll("img[data-birthday-src]").forEach(function (image) {
+            var source = photos[image.getAttribute("data-birthday-src")];
+            if (!source) {
+              return;
+            }
+            image.addEventListener(
+              "load",
+              function () {
+                image.classList.add("is-loaded");
+              },
+              { once: true }
+            );
+            image.src = source;
+          });
         });
-      });
     }
     return photosPromise;
   }
@@ -132,7 +132,15 @@
       return;
     }
     cakePrefetched = true;
-    ["cake3d/index.html", "cake3d/style.css", "cake3d/script.bundle.js"].forEach(function (url) {
+    [
+      "cake3d/index.html",
+      "cake3d/style.css",
+      "assets/cake-script-01.b64",
+      "assets/cake-script-02.b64",
+      "assets/cake-script-03.b64",
+      "assets/cake-script-04.b64",
+      "assets/cake-script-05.b64"
+    ].forEach(function (url) {
       fetch(url, { cache: "force-cache" }).catch(function () {
         // The iframe will retry normally if prefetching is unavailable.
       });
